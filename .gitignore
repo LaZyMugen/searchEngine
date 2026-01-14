@@ -1,0 +1,12 @@
+/target/
+/output/
+/.idea/
+/*.iml
+
+# datasets / dumps (don't commit)
+*.jsonl
+*.xml.bz2
+
+# keep ONLY sample_wiki.xml tracked, ignore other xml
+/data/*.xml
+!/data/sample_wiki.xml
