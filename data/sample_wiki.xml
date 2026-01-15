@@ -1,0 +1,34 @@
+<mediawiki>
+  <page>
+    <title>Binary search</title>
+    <ns>0</ns>
+    <revision>
+      <text>Binary search is an algorithm for finding an item in a sorted list.</text>
+    </revision>
+  </page>
+
+  <page>
+    <title>Machine learning</title>
+    <ns>0</ns>
+    <revision>
+      <text>Machine learning is a field of study in artificial intelligence. Machine learning systems learn from data.</text>
+    </revision>
+  </page>
+
+  <page>
+    <title>Redirect example</title>
+    <ns>0</ns>
+    <redirect title="Binary search"/>
+    <revision>
+      <text>This should be skipped.</text>
+    </revision>
+  </page>
+
+  <page>
+    <title>User talk:SomeUser</title>
+    <ns>3</ns>
+    <revision>
+      <text>This is not an article and should be skipped.</text>
+    </revision>
+  </page>
+</mediawiki>
