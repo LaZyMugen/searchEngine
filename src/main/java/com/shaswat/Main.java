@@ -25,7 +25,7 @@ public class Main {
 String dumpPath = "D:/devProjs/data/wiki/simplewiki-latest-pages-articles.xml.bz2";
 
 
-int maxDocsForJsonl = 20000;
+int maxDocsForJsonl = 50000;
 
 com.shaswat.ingest.WikiDumpParser parser = new com.shaswat.ingest.WikiDumpParser();
 int written = parser.parseToJsonl(dumpPath, outputJsonl, maxDocsForJsonl);
