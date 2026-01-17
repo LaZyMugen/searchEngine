@@ -49,6 +49,10 @@ public class InvertedIndex {
     public int vocabularySize() {
         return index.size();
     }
+    public Set<String> allTerms() {
+    return index.keySet();
+}
+
 
     public boolean containsTerm(String term) {
         return index.containsKey(term);

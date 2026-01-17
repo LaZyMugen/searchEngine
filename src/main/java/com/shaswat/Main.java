@@ -1,16 +1,17 @@
 package com.shaswat;
 
-import com.shaswat.index.IndexBuilder;
+import com.shaswat.index.*;
+import com.shaswat.ingest.Document;
 import com.shaswat.query.Query;
 import com.shaswat.query.QueryParser;
 import com.shaswat.search.SearchEngine;
 import com.shaswat.search.SearchResult;
 import com.shaswat.search.SnippetGenerator;
 import com.shaswat.store.DocStore;
-import com.shaswat.ingest.Document;
 
 import java.io.File;
 import java.util.List;
+import java.util.Scanner;
 
 public class Main {
 
@@ -20,63 +21,111 @@ public class Main {
         String outputDir = "output";
         String outputJsonl = outputDir + "/wiki_docs.jsonl";
 
+        String titleIndexPath = outputDir + "/title_index.txt";
+        String bodyIndexPath  = outputDir + "/body_index.txt";
+        String metaPath       = outputDir + "/index_meta.json";
+
         new File(outputDir).mkdirs();
-
-        // ---- Build index from JSONL ----
-        IndexBuilder builder = new IndexBuilder();
-        IndexBuilder.BuildResult result = builder.buildFromJsonl(outputJsonl, 5000);
-
-        System.out.println("Docs indexed: " + result.docsIndexed);
-        System.out.println("Title vocabulary size: " + result.titleIndex.vocabularySize());
-        System.out.println("Body vocabulary size: " + result.bodyIndex.vocabularySize());
 
         // ---- Load docs into memory (DocStore) ----
         DocStore store = new DocStore();
         store.loadFromJsonl(outputJsonl);
 
+        // ---- Decide: load index or build index ----
+        IndexReader indexReader = new IndexReader();
+        MetadataIO mio = new MetadataIO();
+
+        InvertedIndex titleIndex;
+        InvertedIndex bodyIndex;
+        IndexMetadata meta;
+
+        boolean canLoad = filesExist(titleIndexPath, bodyIndexPath, metaPath);
+
+        if (canLoad) {
+            System.out.println("Found existing index files. Loading from disk...");
+
+            titleIndex = indexReader.readFromFile(titleIndexPath);
+            bodyIndex  = indexReader.readFromFile(bodyIndexPath);
+            meta       = mio.read(metaPath);
+
+            System.out.println("Loaded index + metadata successfully.");
+            System.out.println("Title vocab size: " + titleIndex.vocabularySize());
+            System.out.println("Body vocab size: " + bodyIndex.vocabularySize());
+            System.out.println("N=" + meta.N + ", avgTitleLen=" + meta.avgTitleLen + ", avgBodyLen=" + meta.avgBodyLen);
+
+        } else {
+            System.out.println("Index files not found. Building index from JSONL...");
+
+            IndexBuilder builder = new IndexBuilder();
+            IndexBuilder.BuildResult result = builder.buildFromJsonl(outputJsonl, 5000);
+
+            System.out.println("Docs indexed: " + result.docsIndexed);
+            System.out.println("Title vocabulary size: " + result.titleIndex.vocabularySize());
+            System.out.println("Body vocabulary size: " + result.bodyIndex.vocabularySize());
+
+            // Save metadata
+            meta = new IndexMetadata(
+                    result.docsIndexed,
+                    result.avgTitleLen,
+                    result.avgBodyLen,
+                    result.titleLen,
+                    result.bodyLen
+            );
+            mio.write(metaPath, meta);
+
+            // Save index
+            IndexWriter writer = new IndexWriter();
+            writer.writeToFile(result.titleIndex, titleIndexPath);
+            writer.writeToFile(result.bodyIndex, bodyIndexPath);
+
+            System.out.println("Index + metadata saved to disk.");
+
+            // Use in-memory indexes now
+            titleIndex = result.titleIndex;
+            bodyIndex  = result.bodyIndex;
+        }
+
         // ---- Create search components ----
         QueryParser qp = new QueryParser();
         SearchEngine se = new SearchEngine(
-        result.titleIndex,
-        result.bodyIndex,
-        result.docsIndexed,
-        result.titleLen,
-        result.bodyLen,
-        result.avgTitleLen,
-        result.avgBodyLen
-);
+                titleIndex,
+                bodyIndex,
+                meta.N,
+                meta.titleLen,
+                meta.bodyLen,
+                meta.avgTitleLen,
+                meta.avgBodyLen
+        );
 
         SnippetGenerator sg = new SnippetGenerator();
 
+        // ---- CLI loop ----
         System.out.println("\nWiki-Search CLI ready.");
-System.out.println("Type a query and press Enter.");
-System.out.println("Examples:");
-System.out.println("  binary search");
-System.out.println("  \"machine learning\"");
-System.out.println("  binary OR learning");
-System.out.println("Type 'exit' to quit.\n");
+        System.out.println("Type a query and press Enter.");
+        System.out.println("Examples:");
+        System.out.println("  binary search");
+        System.out.println("  \"machine learning\"");
+        System.out.println("  binary OR learning");
+        System.out.println("Type 'exit' to quit.\n");
 
-java.util.Scanner sc = new java.util.Scanner(System.in);
+        Scanner sc = new Scanner(System.in);
 
-while (true) {
-    System.out.print("> ");
-    String rawQuery = sc.nextLine();
+        while (true) {
+            System.out.print("> ");
+            String rawQuery = sc.nextLine();
 
-    if (rawQuery == null) continue;
-    rawQuery = rawQuery.trim();
+            if (rawQuery == null) continue;
+            rawQuery = rawQuery.trim();
 
-    if (rawQuery.equalsIgnoreCase("exit")) {
-        System.out.println("Bye.");
-        break;
-    }
+            if (rawQuery.equalsIgnoreCase("exit")) {
+                System.out.println("Bye.");
+                break;
+            }
 
-    if (rawQuery.isBlank()) {
-        continue;
-    }
+            if (rawQuery.isBlank()) continue;
 
-    runAndPrint(se, qp, sg, store, rawQuery);
-}
-
+            runAndPrint(se, qp, sg, store, rawQuery);
+        }
     }
 
     private static void runAndPrint(
@@ -107,5 +156,12 @@ while (true) {
             System.out.println((i + 1) + ") " + doc.getTitle() + "   score=" + r.getScore());
             System.out.println("   " + snippet);
         }
+    }
+
+    private static boolean filesExist(String... paths) {
+        for (String p : paths) {
+            if (!new File(p).exists()) return false;
+        }
+        return true;
     }
 }
