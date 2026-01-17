@@ -4,7 +4,7 @@
 /*.iml
 
 # datasets / dumps (don't commit)
-*.jsonl
+*.bz2
 *.xml.bz2
 
 # keep ONLY sample_wiki.xml tracked, ignore other xml
