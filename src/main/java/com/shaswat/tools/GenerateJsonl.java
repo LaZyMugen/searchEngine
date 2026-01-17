@@ -1,8 +1,4 @@
-package com.shaswat.tools;
 
-public class GenerateJsonl {
-    
-}
 package com.shaswat.tools;
 
 import com.shaswat.ingest.WikiDumpParser;
