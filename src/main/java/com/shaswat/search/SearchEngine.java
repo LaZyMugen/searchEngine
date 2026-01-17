@@ -3,12 +3,8 @@ package com.shaswat.search;
 import com.shaswat.index.InvertedIndex;
 import com.shaswat.index.Posting;
 import com.shaswat.query.Query;
-import com.shaswat.search.BM25Scorer;
-import com.shaswat.search.SearchResult;
-
 
 import java.util.*;
-
 
 public class SearchEngine {
 
@@ -41,51 +37,61 @@ public class SearchEngine {
         this.avgBodyLen = avgBodyLen;
     }
 
+    public List<SearchResult> searchRanked(Query q, int topK) {
+        Set<Integer> docs = search(q);
 
- public java.util.List<SearchResult> searchRanked(com.shaswat.query.Query q, int topK) {
-    Set<Integer> docs = search(q);
+        BM25Scorer bm25 = new BM25Scorer(1.2, 0.75);
+        List<SearchResult> results = new ArrayList<>();
 
-    BM25Scorer bm25 = new BM25Scorer(1.2, 0.75);
+        // phrase docs (explicit quotes) - computed ONCE per query
+        Set<Integer> titlePhraseDocs = Collections.emptySet();
+        Set<Integer> bodyPhraseDocs = Collections.emptySet();
 
-    java.util.List<SearchResult> results = new java.util.ArrayList<>();
-
-    java.util.Set<Integer> titlePhraseDocs = java.util.Collections.emptySet();
-java.util.Set<Integer> bodyPhraseDocs = java.util.Collections.emptySet();
-
-if (q.hasPhrase()) {
-    titlePhraseDocs = phraseMatcher.findPhraseMatches(titleIndex, q.getPhraseTokens());
-    bodyPhraseDocs = phraseMatcher.findPhraseMatches(bodyIndex, q.getPhraseTokens());
-}
-
-
-    for (int docId : docs) {
-        double score = 0.0;
-
-        // BM25 keyword scoring
-        for (String term : q.getKeywords()) {
-            score += 1.8 * bm25.scoreTerm(term, docId, titleIndex, N, titleLen[docId], avgTitleLen);
-            score += 1.0 * bm25.scoreTerm(term, docId, bodyIndex, N, bodyLen[docId], avgBodyLen);
+        if (q.hasPhrase()) {
+            titlePhraseDocs = phraseMatcher.findPhraseMatches(titleIndex, q.getPhraseTokens());
+            bodyPhraseDocs = phraseMatcher.findPhraseMatches(bodyIndex, q.getPhraseTokens());
         }
 
-        // phrase bonus
-        // phrase bonus (optimized: computed once per query)
-if (q.hasPhrase()) {
-    if (titlePhraseDocs.contains(docId)) score += 5.0;
-    if (bodyPhraseDocs.contains(docId)) score += 2.0;
-}
+        // auto phrase docs (no quotes, multi-word query) - computed ONCE per query
+        Set<Integer> titleAutoPhraseDocs = Collections.emptySet();
+        Set<Integer> bodyAutoPhraseDocs = Collections.emptySet();
 
-        results.add(new SearchResult(docId, score));
+        if (!q.hasPhrase() && q.getKeywords().size() >= 2) {
+            titleAutoPhraseDocs = phraseMatcher.findPhraseMatches(titleIndex, q.getKeywords());
+            bodyAutoPhraseDocs = phraseMatcher.findPhraseMatches(bodyIndex, q.getKeywords());
+        }
+
+        for (int docId : docs) {
+            double score = 0.0;
+
+            // BM25 keyword scoring
+            for (String term : q.getKeywords()) {
+                score += 1.8 * bm25.scoreTerm(term, docId, titleIndex, N, titleLen[docId], avgTitleLen);
+                score += 1.0 * bm25.scoreTerm(term, docId, bodyIndex, N, bodyLen[docId], avgBodyLen);
+            }
+
+            // Auto phrase boost (multi-word query but no quotes)
+            if (!q.hasPhrase() && q.getKeywords().size() >= 2) {
+                if (titleAutoPhraseDocs.contains(docId)) score += 6.0;
+                if (bodyAutoPhraseDocs.contains(docId)) score += 3.0;
+            }
+
+            // Explicit phrase bonus (query used quotes)
+            if (q.hasPhrase()) {
+                if (titlePhraseDocs.contains(docId)) score += 5.0;
+                if (bodyPhraseDocs.contains(docId)) score += 2.0;
+            }
+
+            results.add(new SearchResult(docId, score));
+        }
+
+        Collections.sort(results);
+        if (results.size() > topK) return results.subList(0, topK);
+        return results;
     }
 
-    java.util.Collections.sort(results);
-    if (results.size() > topK) return results.subList(0, topK);
-    return results;
-}
-
-
-
     public Set<Integer> search(Query q) {
-        Set<Integer> candidateDocs = null;
+        Set<Integer> candidateDocs;
 
         // 1) handle keyword part
         if (!q.getKeywords().isEmpty()) {

@@ -21,6 +21,18 @@ public class Main {
         String outputDir = "output";
         String outputJsonl = outputDir + "/wiki_docs.jsonl";
 
+        // ---- ONE-TIME: Generate wiki_docs.jsonl from real Wikipedia dump ----
+String dumpPath = "D:/devProjs/data/wiki/simplewiki-latest-pages-articles.xml.bz2";
+
+
+int maxDocsForJsonl = 20000;
+
+com.shaswat.ingest.WikiDumpParser parser = new com.shaswat.ingest.WikiDumpParser();
+int written = parser.parseToJsonl(dumpPath, outputJsonl, maxDocsForJsonl);
+
+System.out.println("Generated JSONL docs: " + written);
+
+
         String titleIndexPath = outputDir + "/title_index.txt";
         String bodyIndexPath  = outputDir + "/body_index.txt";
         String metaPath       = outputDir + "/index_meta.json";
@@ -40,50 +52,69 @@ public class Main {
         IndexMetadata meta;
 
         boolean canLoad = filesExist(titleIndexPath, bodyIndexPath, metaPath);
+        int maxDocs = 50000;
 
-        if (canLoad) {
-            System.out.println("Found existing index files. Loading from disk...");
 
-            titleIndex = indexReader.readFromFile(titleIndexPath);
-            bodyIndex  = indexReader.readFromFile(bodyIndexPath);
-            meta       = mio.read(metaPath);
+if (canLoad) {
+    System.out.println("Found existing index files. Loading from disk...");
 
-            System.out.println("Loaded index + metadata successfully.");
-            System.out.println("Title vocab size: " + titleIndex.vocabularySize());
-            System.out.println("Body vocab size: " + bodyIndex.vocabularySize());
-            System.out.println("N=" + meta.N + ", avgTitleLen=" + meta.avgTitleLen + ", avgBodyLen=" + meta.avgBodyLen);
+    long tLoad0 = System.currentTimeMillis();
 
-        } else {
-            System.out.println("Index files not found. Building index from JSONL...");
+    titleIndex = indexReader.readFromFile(titleIndexPath);
+    bodyIndex  = indexReader.readFromFile(bodyIndexPath);
+    meta       = mio.read(metaPath);
 
-            IndexBuilder builder = new IndexBuilder();
-            IndexBuilder.BuildResult result = builder.buildFromJsonl(outputJsonl, 5000);
+    long tLoad1 = System.currentTimeMillis();
 
-            System.out.println("Docs indexed: " + result.docsIndexed);
-            System.out.println("Title vocabulary size: " + result.titleIndex.vocabularySize());
-            System.out.println("Body vocabulary size: " + result.bodyIndex.vocabularySize());
+    System.out.println("Loaded index + metadata successfully.");
+    System.out.println("Title vocab size: " + titleIndex.vocabularySize());
+    System.out.println("Body vocab size: " + bodyIndex.vocabularySize());
+    System.out.println("N=" + meta.N + ", avgTitleLen=" + meta.avgTitleLen + ", avgBodyLen=" + meta.avgBodyLen);
+    System.out.println("Load time: " + (tLoad1 - tLoad0) + " ms");
 
-            // Save metadata
-            meta = new IndexMetadata(
-                    result.docsIndexed,
-                    result.avgTitleLen,
-                    result.avgBodyLen,
-                    result.titleLen,
-                    result.bodyLen
-            );
-            mio.write(metaPath, meta);
+} else {
+    System.out.println("Index files not found. Building index from JSONL...");
+    System.out.println("Building index for maxDocs=" + maxDocs);
 
-            // Save index
-            IndexWriter writer = new IndexWriter();
-            writer.writeToFile(result.titleIndex, titleIndexPath);
-            writer.writeToFile(result.bodyIndex, bodyIndexPath);
+    long tBuild0 = System.currentTimeMillis();
 
-            System.out.println("Index + metadata saved to disk.");
+    IndexBuilder builder = new IndexBuilder();
+    IndexBuilder.BuildResult result = builder.buildFromJsonl(outputJsonl, maxDocs);
 
-            // Use in-memory indexes now
-            titleIndex = result.titleIndex;
-            bodyIndex  = result.bodyIndex;
-        }
+    long tBuild1 = System.currentTimeMillis();
+
+    System.out.println("Docs indexed: " + result.docsIndexed);
+    System.out.println("Title vocabulary size: " + result.titleIndex.vocabularySize());
+    System.out.println("Body vocabulary size: " + result.bodyIndex.vocabularySize());
+    System.out.println("Index build time: " + (tBuild1 - tBuild0) + " ms");
+
+    // Save metadata
+    meta = new IndexMetadata(
+            result.docsIndexed,
+            result.avgTitleLen,
+            result.avgBodyLen,
+            result.titleLen,
+            result.bodyLen
+    );
+
+    long tWrite0 = System.currentTimeMillis();
+
+    mio.write(metaPath, meta);
+
+    IndexWriter writer = new IndexWriter();
+    writer.writeToFile(result.titleIndex, titleIndexPath);
+    writer.writeToFile(result.bodyIndex, bodyIndexPath);
+
+    long tWrite1 = System.currentTimeMillis();
+
+    System.out.println("Disk write time: " + (tWrite1 - tWrite0) + " ms");
+    System.out.println("Index + metadata saved to disk.");
+
+    // Use in-memory indexes now
+    titleIndex = result.titleIndex;
+    bodyIndex  = result.bodyIndex;
+}
+
 
         // ---- Create search components ----
         QueryParser qp = new QueryParser();
@@ -139,8 +170,13 @@ public class Main {
 
         System.out.println("\n==============================");
         System.out.println("QUERY: " + rawQuery);
+        long t0 = System.currentTimeMillis();
+
 
         List<SearchResult> results = se.searchRanked(q, 10);
+        long t1 = System.currentTimeMillis();
+System.out.println("Query time: " + (t1 - t0) + " ms");
+
 
         if (results.isEmpty()) {
             System.out.println("No results.");
